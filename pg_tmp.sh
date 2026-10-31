@@ -33,9 +33,10 @@ trap '' HUP
 
 PGVER=$(pg_ctl -V | awk '{print $3}')
 # The start command reuses a spare datadir only if it was created by the same initdb binary that
-# this pg_tmp runs (after resolving symlinks). A spare from another build of the same version (e.g.
-# from before a C library update) can have other collation versions, and then createdb fails.
-INITDB=$(readlink -f "$(command -v initdb)")
+# this pg_tmp runs (after resolving symlinks, where readlink -f exists). A spare from another build
+# of the same version (e.g. from before a C library update) can have other collation versions, and
+# then createdb fails.
+INITDB=$(readlink -f "$(command -v initdb)" 2> /dev/null || command -v initdb)
 USER_OPTS=""
 [ "x$1" == "x-h" ] && usage $1
 getopt > /dev/null hktp:w:o:d: "$@" || usage
