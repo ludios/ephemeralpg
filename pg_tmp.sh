@@ -72,11 +72,12 @@ done
 # Run "$@" in the background in its own process group, so that signals sent to the caller's
 # process group (e.g. by a command runner that kills what a command leaves running) don't reach it.
 # pg_ctl already detaches the server (into its own session), so a killed stop watcher would leave
-# the server running and its datadir in place.
+# the server running and its datadir in place. Of the shells that run pg_tmp, only bash enables
+# job control (set -m) without a terminal; other shells run "$@" in the caller's process group.
 detach() {
-	set -m
-	"$@" &
-	set +m
+	[ -z "$BASH_VERSION" ] || set -m
+	"$@" < /dev/null &
+	[ -z "$BASH_VERSION" ] || set +m
 }
 
 case ${CMD:-start} in

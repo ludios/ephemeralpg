@@ -45,6 +45,8 @@ File.open 'stubs/getsocket', 'w', 0o755 do |f|
 end
 
 ENV['LANG'] = 'C'
+# pg_tmp runs itself with bash if /bin/sh has no ERR trap, and only bash detaches background tasks
+@detaches = !`/bin/sh -c 'trap : ERR 2> /dev/null || { echo bash; exit; }; echo "$BASH_VERSION"'`.strip.empty?
 @altpath = "stubs:#{ENV['PATH']}"
 @systmp = `mktemp -d /tmp/ephemeralpg-test.XXXXXX`.chomp
 FileUtils.mkdir_p "#{@systmp}/ephemeralpg.XXXXXX/16.3"
@@ -172,7 +174,7 @@ try 'Start a new instance without a pre-initialized datadir' do
   # in their own process groups, so that a kill of the caller's process group misses them
   pgids = File.readlines("#{@systmp}/nice.pgid").map(&:to_i)
   eq pgids.length, 2
-  eq pgids.include?(Process.getpgrp), false
+  eq pgids.include?(Process.getpgrp), !@detaches
 end
 
 try 'Reuse only a pre-initialized datadir that the same initdb created' do

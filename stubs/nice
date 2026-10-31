@@ -3,6 +3,6 @@
 
 shift
 shift # -n 19
-# Before the trace, which the tests wait for
-ps -o pgid= -p $$ >> $SYSTMP/nice.pgid
+# Before the trace, which the tests wait for; BusyBox ps has no -p
+ps -o pgid= -p $$ 2> /dev/null >> $SYSTMP/nice.pgid || cut -d ' ' -f 5 /proc/$$/stat >> $SYSTMP/nice.pgid
 echo $(basename $0) $* >> $SYSTMP/nice.trace
