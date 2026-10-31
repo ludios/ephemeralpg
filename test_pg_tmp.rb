@@ -246,6 +246,44 @@ try 'Stop the server and remove the datadir if the server fails to start' do
   File.unlink "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log"
 end
 
+try 'Stop the server and remove the datadir if createdb fails' do
+  File.write "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log", "ERROR:  could not create\n"
+  cmd = "./pg_tmp start -d #{@systmp}/ephemeralpg.XXXXXX"
+  out, err, status = Open3.capture3({ 'SYSTMP' => @systmp, 'PATH' => @altpath, 'CREATEDB_EXIT' => '1' }, cmd)
+  eq out.empty?, true
+  eq err, <<~COMMANDS
+    pg_ctl -w -o " "\
+     -s -D #{@systmp}/ephemeralpg.XXXXXX/16.3 -l #{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log start
+    createdb -E UNICODE test
+    ERROR:  could not create
+    rm -r #{@systmp}/ephemeralpg.XXXXXX
+  COMMANDS
+  eq status.exitstatus, 1
+  File.unlink "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log"
+end
+
+try 'Keep the datadir if the server fails to start with -w 0' do
+  File.write "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log", "FATAL:  could not bind\n"
+  cmd = "./pg_tmp start -d #{@systmp}/ephemeralpg.XXXXXX -w 0"
+  out, err, status = Open3.capture3({ 'SYSTMP' => @systmp, 'PATH' => @altpath, 'PG_CTL_EXIT' => '1' }, cmd)
+  eq out.empty?, true
+  eq err, <<~COMMANDS
+    pg_ctl -w -o " "\
+     -s -D #{@systmp}/ephemeralpg.XXXXXX/16.3 -l #{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log start
+    FATAL:  could not bind
+  COMMANDS
+  eq status.exitstatus, 1
+  File.unlink "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log"
+end
+
+try 'Leave a server that is already running in the datadir alone' do
+  cmd = "./pg_tmp start -d #{@systmp}/ephemeralpg.XXXXXX"
+  out, err, status = Open3.capture3({ 'SYSTMP' => @systmp, 'PATH' => @altpath, 'PG_CTL_STATUS' => '0' }, cmd)
+  eq out.empty?, true
+  eq err, "A server is already running in #{@systmp}/ephemeralpg.XXXXXX/16.3\n"
+  eq status.exitstatus, 1
+end
+
 try 'Stop a running instance' do
   File.write "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgresql.conf", ''
   cmd = "./pg_tmp stop -d #{@systmp}/ephemeralpg.XXXXXX"

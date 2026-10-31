@@ -120,11 +120,16 @@ case ${CMD:-start} in
 		fi
 		[ -n "$PGPORT" ] && OPTS="-c listen_addresses='*' -c port=$PGPORT"
 		LOGFILE="$TD/$PGVER/postgres.log"
-		# Show why, then stop the server and remove its datadir
+		# So that the server which fail() stops can only be one that this pg_tmp started
+		if pg_ctl status -D $TD/$PGVER > /dev/null 2>&1; then
+			echo >&2 "A server is already running in $TD/$PGVER"
+			exit 1
+		fi
+		# Show why, stop the server, and remove its datadir if the stop watcher would have
 		fail() {
 			tail >&2 $LOGFILE || true
 			pg_ctl -D $TD/$PGVER -m immediate stop > /dev/null 2>&1 || true
-			[ "$KEEP" != "" ] || rm -r $TD
+			[ "$KEEP" == "" ] && [ ${TIMEOUT:-1} -gt 0 ] && rm -r $TD
 			exit 1
 		}
 		LC_ALL=${LC_ALL:-C} pg_ctl -w -o "$OPTS $USER_OPTS" -s -D $TD/$PGVER -l $LOGFILE start || fail
