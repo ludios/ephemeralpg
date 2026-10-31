@@ -1,4 +1,7 @@
 #!/bin/sh
+# Model-output: Claude Opus 5.5
 
 echo >&2 $(basename $0) $*
+# Mimic a slow createdb when the test asks for one: say so, then wait to be killed
+[ -n "$CREATEDB_BLOCK" ] && touch $CREATEDB_BLOCK && exec tail -f /dev/null
 exit ${CREATEDB_EXIT:-0}

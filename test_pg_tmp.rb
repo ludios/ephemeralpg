@@ -262,6 +262,30 @@ try 'Stop the server and remove the datadir if createdb fails' do
   File.unlink "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log"
 end
 
+try 'Stop the server and remove the datadir if pg_tmp is killed during startup' do
+  File.write "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log", "LOG:  starting\n"
+  blocked = "#{@systmp}/createdb.blocked"
+  cmd = "./pg_tmp start -d #{@systmp}/ephemeralpg.XXXXXX"
+  env = { 'SYSTMP' => @systmp, 'PATH' => @altpath, 'CREATEDB_BLOCK' => blocked }
+  Open3.popen3(env, cmd, pgroup: true) do |_, stdout, stderr, wait|
+    sleep 0.01 until File.exist? blocked
+    # as timeout(1) does
+    Process.kill 'TERM', -wait.pid
+    eq stdout.read, ''
+    # bash reports the killed createdb
+    eq stderr.read.gsub(/^Terminated .*\n/, ''), <<~COMMANDS
+      pg_ctl -w -o " "\
+       -s -D #{@systmp}/ephemeralpg.XXXXXX/16.3 -l #{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log start
+      createdb -E UNICODE test
+      LOG:  starting
+      rm -r #{@systmp}/ephemeralpg.XXXXXX
+    COMMANDS
+    eq wait.value.exitstatus, 1
+  end
+  File.unlink blocked
+  File.unlink "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log"
+end
+
 try 'Keep the datadir if the server fails to start with -w 0' do
   File.write "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log", "FATAL:  could not bind\n"
   cmd = "./pg_tmp start -d #{@systmp}/ephemeralpg.XXXXXX -w 0"

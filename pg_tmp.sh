@@ -132,6 +132,8 @@ case ${CMD:-start} in
 			[ "$KEEP" == "" ] && [ ${TIMEOUT:-1} -gt 0 ] && rm -r $TD
 			exit 1
 		}
+		# Until the stop watcher runs, nothing else would stop the server
+		trap fail INT TERM
 		LC_ALL=${LC_ALL:-C} pg_ctl -w -o "$OPTS $USER_OPTS" -s -D $TD/$PGVER -l $LOGFILE start || fail
 		PGHOST=$TD
 		export PGPORT PGHOST
@@ -145,6 +147,7 @@ case ${CMD:-start} in
 		if [ ${TIMEOUT:-1} -gt 0 ]; then
 			detach nice -n 19 $0 $KEEP -w ${TIMEOUT:-60} -d $TD -p ${PGPORT:-5432} stop > $TD/stop.log 2>&1
 		fi
+		trap - INT TERM
 		[ -t 1 ] && echo "$url" || printf "%s" "$url"
 		;;
 	stop)
