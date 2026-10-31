@@ -20,6 +20,9 @@ to standard output.
 spawns a background process that initializes a new database under
 .Pa /tmp/ephemeralpg.*/${PGVER}
 which is used by subsequent invocations to reduce startup time.
+Only invocations that run the same
+.Xr initdb 1
+binary use it.
 The arguments are as follows:
 .Bl -tag -width Ds
 .It Fl k

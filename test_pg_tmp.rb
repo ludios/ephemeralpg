@@ -96,6 +96,7 @@ end
 try 'Create a new database on disk' do
   cmd = './pg_tmp initdb'
   out, err, status = Open3.capture3({ 'SYSTMP' => @systmp, 'PATH' => @altpath }, cmd)
+  datadir = out.chomp
   err.sub!(/ephemeralpg\.[a-zA-Z0-9]{6}/, 'ephemeralpg.012345')
   out.sub!(/ephemeralpg\.[a-zA-Z0-9]{6}/, 'ephemeralpg.012345')
   eq out, "#{@systmp}/ephemeralpg.012345\n"
@@ -103,6 +104,10 @@ try 'Create a new database on disk' do
     initdb --nosync -D #{@systmp}/ephemeralpg.012345/16.3 -E UNICODE -A trust
   COMMANDS
   eq status.success?, true
+  # the marker of a datadir ready for reuse names the initdb that created it
+  eq File.read("#{datadir}/NEW"), "#{File.realpath('stubs/initdb')}\n"
+  # keep later tests from reusing this datadir
+  FileUtils.rm_r datadir
 end
 
 try 'Start a new instance with a specified datadir and multiple options' do
@@ -163,6 +168,23 @@ try 'Start a new instance without a pre-initialized datadir' do
     nice ./pg_tmp -w 60 -d #{@systmp}/ephemeralpg.012345 -p 5432 stop
     nice ./pg_tmp initdb
   COMMANDS
+end
+
+try 'Reuse only a pre-initialized datadir that the same initdb created' do
+  systmp = "#{@systmp}/reuse"
+  { 'AAAAAA' => "/elsewhere/bin/initdb\n", 'BBBBBB' => "#{File.realpath('stubs/initdb')}\n" }.each do |name, initdb|
+    FileUtils.mkdir_p "#{systmp}/ephemeralpg.#{name}/16.3"
+    File.write "#{systmp}/ephemeralpg.#{name}/NEW", initdb
+  end
+  cmd = './pg_tmp start'
+  out, err, status = Open3.capture3({ 'SYSTMP' => systmp, 'PATH' => @altpath }, cmd)
+  out.sub!(/ephemeralpg-test\.[a-zA-Z0-9]{6}%2F/, '')
+  eq out, 'postgresql:///test?host=%2Ftmp%2Freuse%2Fephemeralpg.BBBBBB'
+  eq err, <<~COMMANDS
+    pg_ctl -w -o " " -s -D #{systmp}/ephemeralpg.BBBBBB/16.3 -l #{systmp}/ephemeralpg.BBBBBB/16.3/postgres.log start
+    createdb -E UNICODE test
+  COMMANDS
+  eq status.success?, true
 end
 
 try 'Start a new instance and leave server running' do

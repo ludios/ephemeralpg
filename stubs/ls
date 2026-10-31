@@ -1,4 +1,7 @@
 #!/bin/sh
+# Model-output: Claude Opus 5.5
 
-echo /tmp/ephemeralpg.333333/16.3 /tmp/ephemeralpg.444444/16.3
+# Print the paths that the shell expanded from the glob
+[ "$1" = -d ] && shift
+echo "$@"
 echo >&2 $(basename $0) $*

@@ -32,6 +32,10 @@ trap 'printf "$0: exit code $? on line $LINENO\n" >&2; exit 1' ERR \
 trap '' HUP
 
 PGVER=$(pg_ctl -V | awk '{print $3}')
+# The start command reuses a spare datadir only if it was created by the same initdb binary that
+# this pg_tmp runs (after resolving symlinks). A spare from another build of the same version (e.g.
+# from before a C library update) can have other collation versions, and then createdb fails.
+INITDB=$(readlink -f "$(command -v initdb)")
 USER_OPTS=""
 [ "x$1" == "x-h" ] && usage $1
 getopt > /dev/null hktp:w:o:d: "$@" || usage
@@ -80,7 +84,7 @@ case ${CMD:-start} in
 			    log_connections = on
 			    log_disconnections = on
 		EOF
-		touch $TD/NEW
+		echo "$INITDB" > $TD/NEW
 		echo $TD
 		;;
 	start)
@@ -90,7 +94,8 @@ case ${CMD:-start} in
 		if [ -z $TD ]; then
 			for d in $(ls -d ${SYSTMP:-/tmp}/ephemeralpg.*/$PGVER 2> /dev/null); do
 				td=$(dirname "$d")
-				test -O $td/NEW && rm $td/NEW 2> /dev/null && {
+				test -O $td/NEW && [ "$(cat $td/NEW 2> /dev/null)" = "$INITDB" ] &&
+					rm $td/NEW 2> /dev/null && {
 					TD=$td
 					break
 				}
