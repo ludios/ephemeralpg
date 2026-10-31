@@ -274,8 +274,8 @@ try 'Stop the server and remove the datadir if pg_tmp is killed during startup' 
     # as timeout(1) does
     Process.kill 'TERM', -wait.pid
     eq stdout.read, ''
-    # bash reports the killed createdb
-    eq stderr.read.gsub(/^Terminated .*\n/, ''), <<~COMMANDS
+    # bash reports the killed createdb, with or without its command line
+    eq stderr.read.gsub(/^Terminated\b.*\n/, ''), <<~COMMANDS
       pg_ctl -w -o " "\
        -s -D #{@systmp}/ephemeralpg.XXXXXX/16.3 -l #{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log start
       createdb -E UNICODE test
