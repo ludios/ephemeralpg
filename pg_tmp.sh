@@ -1,4 +1,5 @@
 #!/bin/sh
+# Model-output: Claude Opus 5.5
 # pg_tmp
 # Quickly spin up a temporary PostgreSQL test databases
 
@@ -102,12 +103,16 @@ case ${CMD:-start} in
 		else
 			[ -O $TD/$PGVER ] || TD=$($0 initdb -d $TD)
 		fi
-		if [ ${TIMEOUT:-1} -gt 0 ]; then
-			nice -n 19 $0 $KEEP -w ${TIMEOUT:-60} -d $TD -p ${PGPORT:-5432} stop > $TD/stop.log 2>&1 &
-		fi
 		[ -n "$PGPORT" ] && OPTS="-c listen_addresses='*' -c port=$PGPORT"
 		LOGFILE="$TD/$PGVER/postgres.log"
-		LC_ALL=${LC_ALL:-C} pg_ctl -W -o "$OPTS $USER_OPTS" -s -D $TD/$PGVER -l $LOGFILE start
+		# Show why, then stop the server and remove its datadir
+		fail() {
+			tail >&2 $LOGFILE || true
+			pg_ctl -D $TD/$PGVER -m immediate stop > /dev/null 2>&1 || true
+			[ "$KEEP" != "" ] || rm -r $TD
+			exit 1
+		}
+		LC_ALL=${LC_ALL:-C} pg_ctl -w -o "$OPTS $USER_OPTS" -s -D $TD/$PGVER -l $LOGFILE start || fail
 		PGHOST=$TD
 		export PGPORT PGHOST
 		if [ -n "$PGPORT" ]; then
@@ -115,14 +120,11 @@ case ${CMD:-start} in
 		else
 			url="postgresql:///test?host=$(echo $PGHOST | sed 's:/:%2F:g')"
 		fi
-		for n in 1 2 3 4 5; do
-			sleep 0.1
-			createdb -E UNICODE test > /dev/null 2>&1 && break
-		done
-		[ $? != 0 ] && {
-			tail >&2 $LOGFILE
-			exit 1
-		}
+		createdb -E UNICODE test > /dev/null || fail
+		# Only now, so that the countdown to the first check for clients starts once they can connect
+		if [ ${TIMEOUT:-1} -gt 0 ]; then
+			nice -n 19 $0 $KEEP -w ${TIMEOUT:-60} -d $TD -p ${PGPORT:-5432} stop > $TD/stop.log 2>&1 &
+		fi
 		[ -t 1 ] && echo "$url" || printf "%s" "$url"
 		;;
 	stop)
@@ -140,8 +142,7 @@ case ${CMD:-start} in
 			sleep ${TIMEOUT:-5}
 			count=$(psql test --no-psqlrc -At -c "$q" || echo 0)
 		done
-		pg_ctl -W -D $TD/$PGVER stop
-		sleep 1
+		pg_ctl -w -D $TD/$PGVER stop
 		;;
 	selftest)
 		export SYSTMP=$(mktemp -d /tmp/ephemeralpg-selftest.XXXXXX)

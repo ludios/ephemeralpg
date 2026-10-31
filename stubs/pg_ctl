@@ -1,4 +1,5 @@
 #!/bin/sh
+# Model-output: Claude Opus 5.5
 
 case "$1" in
 	-V)
@@ -16,3 +17,5 @@ while [ $# -gt 0 ]; do
 	shift
 done
 echo >&2
+# Mimic a failure when the test asks for one
+exit ${PG_CTL_EXIT:-0}

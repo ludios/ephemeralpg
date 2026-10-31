@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# Model-output: Claude Opus 5.5
 
 require 'fileutils'
 require 'open3'
@@ -17,6 +18,15 @@ def try(descr)
   # highlight slow tests
   delta = "\e[7m#{delta}\e[27m" if (Time.now - start) > 0.1
   puts "#{delta}: #{descr}"
+end
+
+# Return the sorted commands that pg_tmp's background tasks passed to the nice stub, waiting up to
+# 5 seconds for `count` of them: pg_tmp exits without waiting for its background tasks to start
+def nice_trace(count)
+  path = "#{@systmp}/nice.trace"
+  deadline = Time.now + 5
+  sleep 0.01 while File.readlines(path).length < count && Time.now < deadline
+  File.readlines(path).sort.join.sub(/ephemeralpg\.[a-zA-Z0-9]{6}/, 'ephemeralpg.012345')
 end
 
 def eq(result, expected)
@@ -102,14 +112,13 @@ try 'Start a new instance with a specified datadir and multiple options' do
   out.sub!(/ephemeralpg-test\.[a-zA-Z0-9]{6}%2F/, '')
   eq out, 'postgresql:///test?host=%2Ftmp%2Fephemeralpg.XXXXXX'
   eq err, <<~COMMANDS
-    pg_ctl -W -o " -c track_commit_timestamp=true -c shared_buffers=12MB"\
+    pg_ctl -w -o " -c track_commit_timestamp=true -c shared_buffers=12MB"\
      -s -D #{@systmp}/ephemeralpg.XXXXXX/16.3 -l #{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log start
-    sleep 0.1
+    createdb -E UNICODE test
   COMMANDS
   eq status.success?, true
   # background tasks kicked off by starting an instance
-  nice = File.readlines("#{@systmp}/nice.trace").sort.join
-  nice.sub!(/ephemeralpg\.[a-zA-Z0-9]{6}/, 'ephemeralpg.012345')
+  nice = nice_trace(1)
   eq nice, <<~COMMANDS
     nice ./pg_tmp -w 60 -d #{@systmp}/ephemeralpg.012345 -p 5432 stop
   COMMANDS
@@ -121,14 +130,13 @@ try 'Start a new instance on a TCP port using a specified datadir' do
   out, err, status = Open3.capture3({ 'SYSTMP' => @systmp, 'PATH' => @altpath }, cmd)
   eq out, 'postgresql://user11@127.0.0.1:55550/test'
   eq err, <<~COMMANDS
-    pg_ctl -W -o "-c listen_addresses='*' -c port=55550 "\
+    pg_ctl -w -o "-c listen_addresses='*' -c port=55550 "\
      -s -D #{@systmp}/ephemeralpg.XXXXXX/16.3 -l #{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log start
-    sleep 0.1
+    createdb -E UNICODE test
   COMMANDS
   eq status.success?, true
   # background tasks kicked off by starting an instance
-  nice = File.readlines("#{@systmp}/nice.trace").sort.join
-  nice.sub!(/ephemeralpg\.[a-zA-Z0-9]{6}/, 'ephemeralpg.012345')
+  nice = nice_trace(1)
   eq nice, <<~COMMANDS
     nice ./pg_tmp -w 60 -d #{@systmp}/ephemeralpg.012345 -p 55550 stop
   COMMANDS
@@ -145,13 +153,12 @@ try 'Start a new instance without a pre-initialized datadir' do
   eq err, <<~COMMANDS
     initdb --nosync -D #{@systmp}/ephemeralpg.012345/16.3 -E UNICODE -A trust
     rm #{@systmp}/ephemeralpg.012345/NEW
-    pg_ctl -W -o " " -s -D #{@systmp}/ephemeralpg.012345/16.3 -l #{@systmp}/ephemeralpg.012345/16.3/postgres.log start
-    sleep 0.1
+    pg_ctl -w -o " " -s -D #{@systmp}/ephemeralpg.012345/16.3 -l #{@systmp}/ephemeralpg.012345/16.3/postgres.log start
+    createdb -E UNICODE test
   COMMANDS
   eq status.success?, true
   # background tasks kicked off by starting an instance
-  nice = File.readlines("#{@systmp}/nice.trace").sort.join
-  nice.sub!(/ephemeralpg\.[a-zA-Z0-9]{6}/, 'ephemeralpg.012345')
+  nice = nice_trace(2)
   eq nice, <<~COMMANDS
     nice ./pg_tmp -w 60 -d #{@systmp}/ephemeralpg.012345 -p 5432 stop
     nice ./pg_tmp initdb
@@ -165,14 +172,13 @@ try 'Start a new instance and leave server running' do
   out.sub!(/ephemeralpg-test\.[a-zA-Z0-9]{6}%2F/, '')
   eq out, 'postgresql:///test?host=%2Ftmp%2Fephemeralpg.XXXXXX'
   eq err, <<~COMMANDS
-    pg_ctl -W -o " "\
+    pg_ctl -w -o " "\
      -s -D #{@systmp}/ephemeralpg.XXXXXX/16.3 -l #{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log start
-    sleep 0.1
+    createdb -E UNICODE test
   COMMANDS
   eq status.success?, true
   # background tasks kicked off by starting an instance
-  nice = File.readlines("#{@systmp}/nice.trace").sort.join
-  nice.sub!(/ephemeralpg\.[a-zA-Z0-9]{6}/, 'ephemeralpg.012345')
+  nice = nice_trace(0)
   eq nice, ''
 end
 
@@ -183,17 +189,34 @@ try 'Start a new instance and keep the tmp datadir' do
   out.sub!(/ephemeralpg-test\.[a-zA-Z0-9]{6}%2F/, '')
   eq out, 'postgresql:///test?host=%2Ftmp%2Fephemeralpg.XXXXXX'
   eq err, <<~COMMANDS
-    pg_ctl -W -o " "\
+    pg_ctl -w -o " "\
      -s -D #{@systmp}/ephemeralpg.XXXXXX/16.3 -l #{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log start
-    sleep 0.1
+    createdb -E UNICODE test
   COMMANDS
   eq status.success?, true
   # background tasks kicked off by starting an instance
-  nice = File.readlines("#{@systmp}/nice.trace").sort.join
-  nice.sub!(/ephemeralpg\.[a-zA-Z0-9]{6}/, 'ephemeralpg.012345')
+  nice = nice_trace(1)
   eq nice, <<~COMMANDS
     nice ./pg_tmp -k -w 60 -d #{@systmp}/ephemeralpg.012345 -p 5432 stop
   COMMANDS
+end
+
+try 'Stop the server and remove the datadir if the server fails to start' do
+  File.write "#{@systmp}/nice.trace", ''
+  File.write "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log", "FATAL:  could not bind\n"
+  cmd = "./pg_tmp start -d #{@systmp}/ephemeralpg.XXXXXX"
+  out, err, status = Open3.capture3({ 'SYSTMP' => @systmp, 'PATH' => @altpath, 'PG_CTL_EXIT' => '1' }, cmd)
+  eq out.empty?, true
+  eq err, <<~COMMANDS
+    pg_ctl -w -o " "\
+     -s -D #{@systmp}/ephemeralpg.XXXXXX/16.3 -l #{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log start
+    FATAL:  could not bind
+    rm -r #{@systmp}/ephemeralpg.XXXXXX
+  COMMANDS
+  eq status.exitstatus, 1
+  # no stop watcher for a server that did not start
+  eq File.read("#{@systmp}/nice.trace"), ''
+  File.unlink "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgres.log"
 end
 
 try 'Stop a running instance' do
@@ -204,8 +227,7 @@ try 'Stop a running instance' do
   eq err, <<~COMMANDS
     sleep 5
     psql test --no-psqlrc -At -c SELECT count(*) FROM pg_stat_activity WHERE datname IS NOT NULL AND state IS NOT NULL;
-    pg_ctl -W -D #{@systmp}/ephemeralpg.XXXXXX/16.3 stop
-    sleep 1
+    pg_ctl -w -D #{@systmp}/ephemeralpg.XXXXXX/16.3 stop
     rm -r #{@systmp}/ephemeralpg.XXXXXX
   COMMANDS
   eq status.success?, true
@@ -219,8 +241,7 @@ try 'Stop a running instance and remove tmp datadir' do
   eq err, <<~COMMANDS
     sleep 60
     psql test --no-psqlrc -At -c SELECT count(*) FROM pg_stat_activity WHERE datname IS NOT NULL AND state IS NOT NULL;
-    pg_ctl -W -D #{@systmp}/ephemeralpg.XXXXXX/16.3 stop
-    sleep 1
+    pg_ctl -w -D #{@systmp}/ephemeralpg.XXXXXX/16.3 stop
     rm -r #{@systmp}/ephemeralpg.XXXXXX
   COMMANDS
   eq status.success?, true
@@ -235,8 +256,7 @@ try 'Stop a running instance if query fails' do
   eq out.empty?, true
   eq err.sub(/on line \d+/, 'on line 100'), <<~COMMANDS
     sleep 5
-    pg_ctl -W -D #{@systmp}/ephemeralpg.XXXXXX/16.3 stop
-    sleep 1
+    pg_ctl -w -D #{@systmp}/ephemeralpg.XXXXXX/16.3 stop
     rm -r #{@systmp}/ephemeralpg.XXXXXX
   COMMANDS
   eq status.success?, true
@@ -250,8 +270,7 @@ try 'Stop a running instance and keep tmp datadir' do
   eq out.empty?, true
   eq err, <<~COMMANDS
     sleep 60
-    pg_ctl -W -D #{@systmp}/ephemeralpg.XXXXXX/16.3 stop
-    sleep 1
+    pg_ctl -w -D #{@systmp}/ephemeralpg.XXXXXX/16.3 stop
   COMMANDS
   eq status.success?, true
   File.unlink "#{@systmp}/ephemeralpg.XXXXXX/16.3/postgresql.conf"

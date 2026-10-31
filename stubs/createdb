@@ -1,4 +1,3 @@
 #!/bin/sh
 
-# Called once if an existing database was not found
-echo >&2 $0 $*
+echo >&2 $(basename $0) $*
