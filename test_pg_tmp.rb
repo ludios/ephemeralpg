@@ -149,6 +149,7 @@ end
 
 try 'Start a new instance without a pre-initialized datadir' do
   File.write "#{@systmp}/nice.trace", ''
+  File.write "#{@systmp}/nice.pgid", ''
   cmd = './pg_tmp start '
   out, err, status = Open3.capture3({ 'SYSTMP' => @systmp, 'PATH' => @altpath }, cmd)
   out.sub!(/ephemeralpg-test\.[a-zA-Z0-9]{6}%2F/, '')
@@ -168,6 +169,10 @@ try 'Start a new instance without a pre-initialized datadir' do
     nice ./pg_tmp -w 60 -d #{@systmp}/ephemeralpg.012345 -p 5432 stop
     nice ./pg_tmp initdb
   COMMANDS
+  # in their own process groups, so that a kill of the caller's process group misses them
+  pgids = File.readlines("#{@systmp}/nice.pgid").map(&:to_i)
+  eq pgids.length, 2
+  eq pgids.include?(Process.getpgrp), false
 end
 
 try 'Reuse only a pre-initialized datadir that the same initdb created' do

@@ -1,5 +1,8 @@
 #!/bin/sh
+# Model-output: Claude Opus 5.5
 
 shift
 shift # -n 19
+# Before the trace, which the tests wait for
+ps -o pgid= -p $$ >> $SYSTMP/nice.pgid
 echo $(basename $0) $* >> $SYSTMP/nice.trace

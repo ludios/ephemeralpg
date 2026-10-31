@@ -68,6 +68,16 @@ done
 	PGPORT="$(getsocket)"
 }
 
+# Run "$@" in the background in its own process group, so that signals sent to the caller's
+# process group (e.g. by a command runner that kills what a command leaves running) don't reach it.
+# pg_ctl already detaches the server (into its own session), so a killed stop watcher would leave
+# the server running and its datadir in place.
+detach() {
+	set -m
+	"$@" &
+	set +m
+}
+
 case ${CMD:-start} in
 	initdb)
 		[ -z $TD ] || mkdir -p $TD
@@ -104,7 +114,7 @@ case ${CMD:-start} in
 				TD=$($0 initdb)
 				rm $TD/NEW
 			}
-			nice -n 19 $0 initdb > /dev/null &
+			detach nice -n 19 $0 initdb > /dev/null
 		else
 			[ -O $TD/$PGVER ] || TD=$($0 initdb -d $TD)
 		fi
@@ -128,7 +138,7 @@ case ${CMD:-start} in
 		createdb -E UNICODE test > /dev/null || fail
 		# Only now, so that the countdown to the first check for clients starts once they can connect
 		if [ ${TIMEOUT:-1} -gt 0 ]; then
-			nice -n 19 $0 $KEEP -w ${TIMEOUT:-60} -d $TD -p ${PGPORT:-5432} stop > $TD/stop.log 2>&1 &
+			detach nice -n 19 $0 $KEEP -w ${TIMEOUT:-60} -d $TD -p ${PGPORT:-5432} stop > $TD/stop.log 2>&1
 		fi
 		[ -t 1 ] && echo "$url" || printf "%s" "$url"
 		;;
