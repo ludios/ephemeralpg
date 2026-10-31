@@ -20,10 +20,10 @@ def try(descr)
   puts "#{delta}: #{descr}"
 end
 
-# Return the sorted commands that pg_tmp's background tasks passed to the nice stub, waiting up to
-# 5 seconds for `count` of them: pg_tmp exits without waiting for its background tasks to start
-def nice_trace(count)
-  path = "#{@systmp}/nice.trace"
+# Return the sorted commands that pg_tmp's background tasks passed to the nice stub in `systmp`,
+# waiting up to 5 seconds for `count` of them: pg_tmp exits without waiting for its background tasks
+def nice_trace(count, systmp = @systmp)
+  path = "#{systmp}/nice.trace"
   deadline = Time.now + 5
   sleep 0.01 while File.readlines(path).length < count && Time.now < deadline
   File.readlines(path).sort.join.sub(/ephemeralpg\.[a-zA-Z0-9]{6}/, 'ephemeralpg.012345')
@@ -183,6 +183,7 @@ try 'Reuse only a pre-initialized datadir that the same initdb created' do
     FileUtils.mkdir_p "#{systmp}/ephemeralpg.#{name}/16.3"
     File.write "#{systmp}/ephemeralpg.#{name}/NEW", initdb
   end
+  File.write "#{systmp}/nice.trace", ''
   cmd = './pg_tmp start'
   out, err, status = Open3.capture3({ 'SYSTMP' => systmp, 'PATH' => @altpath }, cmd)
   out.sub!(/ephemeralpg-test\.[a-zA-Z0-9]{6}%2F/, '')
@@ -192,6 +193,11 @@ try 'Reuse only a pre-initialized datadir that the same initdb created' do
     createdb -E UNICODE test
   COMMANDS
   eq status.success?, true
+  # also keeps the background tasks from writing into systmp while at_exit removes it
+  eq nice_trace(2, systmp), <<~COMMANDS
+    nice ./pg_tmp -w 60 -d #{systmp}/ephemeralpg.012345 -p 5432 stop
+    nice ./pg_tmp initdb
+  COMMANDS
 end
 
 try 'Start a new instance and leave server running' do
@@ -270,7 +276,8 @@ try 'Stop the server and remove the datadir if pg_tmp is killed during startup' 
   cmd = "./pg_tmp start -d #{@systmp}/ephemeralpg.XXXXXX"
   env = { 'SYSTMP' => @systmp, 'PATH' => @altpath, 'CREATEDB_BLOCK' => blocked }
   Open3.popen3(env, cmd, pgroup: true) do |_, stdout, stderr, wait|
-    sleep 0.01 until File.exist? blocked
+    deadline = Time.now + 5
+    sleep 0.01 until File.exist?(blocked) || Time.now > deadline
     # as timeout(1) does
     Process.kill 'TERM', -wait.pid
     eq stdout.read, ''
