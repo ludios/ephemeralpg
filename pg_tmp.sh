@@ -122,7 +122,8 @@ case ${CMD:-start} in
 		fi
 		[ -n "$PGPORT" ] && OPTS="-c listen_addresses='*' -c port=$PGPORT"
 		LOGFILE="$TD/$PGVER/postgres.log"
-		# So that the server which fail() stops can only be one that this pg_tmp started
+		# Refuse a datadir whose server is already running, so that fail() doesn't stop that server. Two
+		# pg_tmp that start on the same datadir at the same time can both pass this check.
 		if pg_ctl status -D $TD/$PGVER > /dev/null 2>&1; then
 			echo >&2 "A server is already running in $TD/$PGVER"
 			exit 1
